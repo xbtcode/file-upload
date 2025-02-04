@@ -1,6 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>File Upload</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
     <style>
@@ -84,9 +86,64 @@
         }
 
         .selected-files {
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .selected-files-table {
+            width: 100%;
+            border-collapse: collapse;
             margin-top: 0.5rem;
+            background: #f8f9fa;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .selected-files-table th,
+        .selected-files-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .selected-files-table th {
+            background: #e9ecef;
+            font-weight: 500;
+            color: #2c3e50;
+        }
+
+        .selected-files-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .selected-files-table tr:hover {
+            background: #fff;
+        }
+
+        .selected-files-header {
+            color: #2c3e50;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .remove-file {
+            color: #e74c3c;
+            cursor: pointer;
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 3px;
+            transition: background-color 0.3s ease;
+        }
+
+        .remove-file:hover {
+            background-color: #fee;
+        }
+
+        .no-files-selected {
             color: #7f8c8d;
-            font-size: 0.9rem;
+            font-style: italic;
+            margin-top: 0.5rem;
         }
 
         table {
@@ -158,8 +215,14 @@
         <button id="uploadButton" onclick="uploadFiles()">Upload Files</button>
     </div>
 
-    <div id="selectedFiles" class="selected-files"></div>
+    <div class="selected-files">
+        <div class="selected-files-header">Selected Files</div>
+        <div id="selectedFilesContent">
+            <div class="no-files-selected">No files selected</div>
+        </div>
+    </div>
 
+    <div class="selected-files-header">Upload Progress</div>
     <table id="fileTable">
         <thead>
         <tr>
@@ -176,28 +239,104 @@
 
 <script>
         let isUploadInProgress = false;
+        let selectedFilesArray = [];
+        let activeUploads = 0;
 
         function updateButtonStates() {
             const browseButton = document.getElementById('browseButton');
             const uploadButton = document.getElementById('uploadButton');
             const fileInput = document.getElementById('fileInput');
 
-            browseButton.classList.toggle('disabled', isUploadInProgress);
-            uploadButton.disabled = isUploadInProgress;
-            fileInput.disabled = isUploadInProgress;
+            const isDisabled = isUploadInProgress || activeUploads > 0;
+            browseButton.classList.toggle('disabled', isDisabled);
+            uploadButton.disabled = isDisabled;
+            fileInput.disabled = isDisabled;
         }
 
         function updateSelectedFiles() {
-            if (isUploadInProgress) return;
+            if (isUploadInProgress || activeUploads > 0) return;
 
             const fileInput = document.getElementById('fileInput');
-            const selectedFiles = document.getElementById('selectedFiles');
-            const files = fileInput.files;
+            const selectedFilesContent = document.getElementById('selectedFilesContent');
+            const files = Array.from(fileInput.files);
 
-            if (files.length > 0) {
-                selectedFiles.textContent = `${files.length} file(s) selected`;
+            selectedFilesArray = [...selectedFilesArray, ...files];
+
+            if (selectedFilesArray.length > 0) {
+                const table = document.createElement('table');
+                table.className = 'selected-files-table';
+
+                const thead = document.createElement('thead');
+                thead.innerHTML = `
+                    <tr>
+                        <th>File Name</th>
+                        <th>Size</th>
+                        <th>Action</th>
+                    </tr>
+                `;
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                selectedFilesArray.forEach((file, index) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${file.name}</td>
+                        <td>${formatFileSize(file.size)}</td>
+                        <td><span class="remove-file" onclick="removeSelectedFile(${index})">×</span></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+                table.appendChild(tbody);
+
+                selectedFilesContent.innerHTML = '';
+                selectedFilesContent.appendChild(table);
             } else {
-                selectedFiles.textContent = '';
+                selectedFilesContent.innerHTML = '<div class="no-files-selected">No files selected</div>';
+            }
+
+            fileInput.value = '';
+        }
+
+        function removeSelectedFile(index) {
+            if (isUploadInProgress || activeUploads > 0) return;
+
+            selectedFilesArray.splice(index, 1);
+            updateSelectedFilesTable();
+        }
+
+        function updateSelectedFilesTable() {
+            const selectedFilesContent = document.getElementById('selectedFilesContent');
+
+            if (selectedFilesArray.length > 0) {
+                const table = document.createElement('table');
+                table.className = 'selected-files-table';
+
+                const thead = document.createElement('thead');
+                thead.innerHTML = `
+                    <tr>
+                        <th>File Name</th>
+                        <th>Size</th>
+                        <th>Action</th>
+                    </tr>
+                `;
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                selectedFilesArray.forEach((file, index) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${file.name}</td>
+                        <td>${formatFileSize(file.size)}</td>
+                        <td><span class="remove-file" onclick="removeSelectedFile(${index})">×</span></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+                table.appendChild(tbody);
+
+                selectedFilesContent.innerHTML = '';
+                selectedFilesContent.appendChild(table);
+            } else {
+                selectedFilesContent.innerHTML = '<div class="no-files-selected">No files selected</div>';
             }
         }
 
@@ -250,8 +389,7 @@
             let startTime = Date.now();
             let lastUploadedSize = 0;
 
-            // Set upload in progress
-            isUploadInProgress = true;
+            activeUploads++;
             updateButtonStates();
 
             xhr.upload.onprogress = function(e) {
@@ -281,16 +419,20 @@
                     statusCell.textContent = 'Failed';
                     statusCell.className = 'status-error';
                 }
-                // Reset upload state
-                isUploadInProgress = false;
+                activeUploads--;
+                if (activeUploads === 0) {
+                    isUploadInProgress = false;
+                }
                 updateButtonStates();
             };
 
             xhr.onerror = function() {
                 statusCell.textContent = 'Failed';
                 statusCell.className = 'status-error';
-                // Reset upload state
-                isUploadInProgress = false;
+                activeUploads--;
+                if (activeUploads === 0) {
+                    isUploadInProgress = false;
+                }
                 updateButtonStates();
             };
 
@@ -298,15 +440,16 @@
         }
 
         function uploadFiles() {
-            const fileInput = document.getElementById('fileInput');
-            const files = fileInput.files;
+            if (selectedFilesArray.length === 0) return;
+            if (isUploadInProgress || activeUploads > 0) return;
+
             const fileTable = document.getElementById('fileTableBody');
-
-            if (files.length === 0) return;
-
             fileTable.innerHTML = '';
 
-            Array.from(files).forEach(file => {
+            isUploadInProgress = true;
+            updateButtonStates();
+
+            selectedFilesArray.forEach(file => {
                 const row = fileTable.insertRow();
 
                 const nameCell = row.insertCell(0);
@@ -326,9 +469,8 @@
                 uploadFile(file, progressCell, statusCell);
             });
 
-            // Reset file input
-            fileInput.value = '';
-            document.getElementById('selectedFiles').textContent = '';
+            selectedFilesArray = [];
+            updateSelectedFilesTable();
         }
     </script>
 </body>
