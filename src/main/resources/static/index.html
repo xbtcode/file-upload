@@ -49,13 +49,18 @@
             color: white;
             border-radius: 5px;
             cursor: pointer;
-            transition: background-color 0.3s ease;
+            transition: all 0.3s ease;
             display: inline-block;
-            transition: opacity 0.3s ease;
         }
 
         .custom-file-upload:hover {
             background-color: #2980b9;
+        }
+
+        .custom-file-upload.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background-color: #95a5a6;
         }
 
         button {
@@ -65,11 +70,23 @@
             border: none;
             border-radius: 5px;
             cursor: pointer;
-            transition: background-color 0.3s ease;
+            transition: all 0.3s ease;
         }
 
         button:hover {
             background-color: #27ae60;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background-color: #95a5a6 !important;
+        }
+
+        .selected-files {
+            margin-top: 0.5rem;
+            color: #7f8c8d;
+            font-size: 0.9rem;
         }
 
         table {
@@ -128,25 +145,13 @@
         .status-pending {
             color: #f39c12;
         }
-
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            background-color: #95a5a6 !important;
-        }
-
-        input[type="file"]:disabled + .custom-file-upload {
-            opacity: 0.5;
-            cursor: not-allowed;
-            background-color: #95a5a6;
-        }
     </style>
 </head>
 <body>
 <div id="mainContent">
     <h2>File Upload</h2>
     <div class="upload-container">
-        <label for="fileInput" class="custom-file-upload">
+        <label for="fileInput" class="custom-file-upload" id="browseButton">
             Choose Files
         </label>
         <input type="file" id="fileInput" multiple onChange="updateSelectedFiles()">
@@ -169,6 +174,162 @@
     </table>
 </div>
 
-<script src="upload.js"></script>
+<script>
+        let isUploadInProgress = false;
+
+        function updateButtonStates() {
+            const browseButton = document.getElementById('browseButton');
+            const uploadButton = document.getElementById('uploadButton');
+            const fileInput = document.getElementById('fileInput');
+
+            browseButton.classList.toggle('disabled', isUploadInProgress);
+            uploadButton.disabled = isUploadInProgress;
+            fileInput.disabled = isUploadInProgress;
+        }
+
+        function updateSelectedFiles() {
+            if (isUploadInProgress) return;
+
+            const fileInput = document.getElementById('fileInput');
+            const selectedFiles = document.getElementById('selectedFiles');
+            const files = fileInput.files;
+
+            if (files.length > 0) {
+                selectedFiles.textContent = `${files.length} file(s) selected`;
+            } else {
+                selectedFiles.textContent = '';
+            }
+        }
+
+        function createProgressBar() {
+            const container = document.createElement('div');
+            container.className = 'progress-container';
+
+            const progressBar = document.createElement('div');
+            progressBar.className = 'file-progress';
+
+            const progressBarInner = document.createElement('div');
+            progressBarInner.className = 'file-progress-bar';
+
+            const progressText = document.createElement('div');
+            progressText.className = 'progress-percentage';
+            progressText.textContent = '0%';
+
+            progressBar.appendChild(progressBarInner);
+            container.appendChild(progressBar);
+            container.appendChild(progressText);
+
+            return container;
+        }
+
+        function updateProgressBar(progressCell, percentage) {
+            const progressBar = progressCell.querySelector('.file-progress-bar');
+            const progressText = progressCell.querySelector('.progress-percentage');
+
+            if (progressBar && progressText) {
+                progressBar.style.width = `${percentage}%`;
+                progressText.textContent = `${Math.round(percentage)}%`;
+            }
+        }
+
+        function formatFileSize(bytes) {
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            if (bytes === 0) return '0 Bytes';
+            const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+            return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
+        }
+
+        function uploadFile(file, progressCell, statusCell) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', 'http://nebunie1.go.ro:8080/upload', true);
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+
+            let startTime = Date.now();
+            let lastUploadedSize = 0;
+
+            // Set upload in progress
+            isUploadInProgress = true;
+            updateButtonStates();
+
+            xhr.upload.onprogress = function(e) {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    updateProgressBar(progressCell, percentComplete);
+
+                    const currentTime = Date.now();
+                    const timeElapsed = (currentTime - startTime) / 1000;
+                    const uploadedSize = e.loaded - lastUploadedSize;
+                    const uploadSpeed = uploadedSize / timeElapsed;
+                    const speedMBps = (uploadSpeed / (1024 * 1024)).toFixed(2);
+
+                    statusCell.textContent = `Uploading (${speedMBps} MB/s)`;
+
+                    lastUploadedSize = e.loaded;
+                    startTime = currentTime;
+                }
+            };
+
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    updateProgressBar(progressCell, 100);
+                    statusCell.textContent = 'Uploaded';
+                    statusCell.className = 'status-success';
+                } else {
+                    statusCell.textContent = 'Failed';
+                    statusCell.className = 'status-error';
+                }
+                // Reset upload state
+                isUploadInProgress = false;
+                updateButtonStates();
+            };
+
+            xhr.onerror = function() {
+                statusCell.textContent = 'Failed';
+                statusCell.className = 'status-error';
+                // Reset upload state
+                isUploadInProgress = false;
+                updateButtonStates();
+            };
+
+            xhr.send(formData);
+        }
+
+        function uploadFiles() {
+            const fileInput = document.getElementById('fileInput');
+            const files = fileInput.files;
+            const fileTable = document.getElementById('fileTableBody');
+
+            if (files.length === 0) return;
+
+            fileTable.innerHTML = '';
+
+            Array.from(files).forEach(file => {
+                const row = fileTable.insertRow();
+
+                const nameCell = row.insertCell(0);
+                nameCell.textContent = file.name;
+
+                const sizeCell = row.insertCell(1);
+                sizeCell.textContent = formatFileSize(file.size);
+
+                const progressCell = row.insertCell(2);
+                progressCell.className = 'progress-cell';
+                progressCell.appendChild(createProgressBar());
+
+                const statusCell = row.insertCell(3);
+                statusCell.textContent = 'Pending';
+                statusCell.className = 'status-pending';
+
+                uploadFile(file, progressCell, statusCell);
+            });
+
+            // Reset file input
+            fileInput.value = '';
+            document.getElementById('selectedFiles').textContent = '';
+        }
+    </script>
 </body>
 </html>
